@@ -1,8 +1,11 @@
+import ipaddress
 import shutil
+import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from app.json_store import read_json, write_json
 
@@ -58,6 +61,7 @@ def check_reachability(
     *,
     http_get: Callable[[str, float], object] | None = None,
     which: Callable[[str], str | None] = shutil.which,
+    resolve_host: Callable[[str], list[str]] | None = None,
 ) -> ReachabilityResult:
     server_type = config.get("type")
     has_url = "url" in config
@@ -73,7 +77,9 @@ def check_reachability(
         return _check_stdio_reachability(config, which)
 
     if server_type in ("http", "sse"):
-        return _check_http_reachability(config, http_get or _default_http_get)
+        return _check_http_reachability(
+            config, http_get or _default_http_get, resolve_host or _default_resolve_host
+        )
 
     return ReachabilityResult(
         False, f"Test di raggiungibilità non supportato per il tipo '{server_type}'."
@@ -95,17 +101,54 @@ def _check_stdio_reachability(
 
 
 def _check_http_reachability(
-    config: dict, http_get: Callable[[str, float], object]
+    config: dict,
+    http_get: Callable[[str, float], object],
+    resolve_host: Callable[[str], list[str]],
 ) -> ReachabilityResult:
     url = config.get("url")
     if not url:
         return ReachabilityResult(False, "Nessun url configurato.")
+
+    hostname = urlsplit(url).hostname
+    if not hostname:
+        return ReachabilityResult(False, "URL non valido: host mancante.")
+
+    try:
+        resolved_ips = resolve_host(hostname)
+    except OSError as exc:
+        return ReachabilityResult(False, f"Risoluzione DNS fallita per '{hostname}': {exc}")
+
+    for ip in resolved_ips:
+        if _is_non_routable_address(ip):
+            return ReachabilityResult(
+                False,
+                f"Blocco di sicurezza: '{hostname}' risolve a un indirizzo non instradabile "
+                f"pubblicamente ({ip}). I server MCP HTTP/SSE devono puntare a un host "
+                "pubblico.",
+            )
 
     try:
         http_get(url, 3.0)
     except Exception as exc:
         return ReachabilityResult(False, f"Connessione fallita: {exc}")
     return ReachabilityResult(True, "Connessione riuscita.")
+
+
+def _is_non_routable_address(ip: str) -> bool:
+    address = ipaddress.ip_address(ip)
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
+
+
+def _default_resolve_host(hostname: str) -> list[str]:
+    addr_info = socket.getaddrinfo(hostname, None)
+    return sorted({info[4][0] for info in addr_info})
 
 
 def _default_http_get(url: str, timeout: float) -> object:

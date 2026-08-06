@@ -21,6 +21,9 @@ dist/
 # OS
 .DS_Store
 
+# Playwright MCP test artifacts
+.playwright-mcp/
+
 # Control plane runtime data (local, not shared)
 .claude-control-plane/
 *.sqlite

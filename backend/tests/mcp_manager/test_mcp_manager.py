@@ -99,6 +99,7 @@ def test_check_reachability_http_success() -> None:
     result = check_reachability(
         {"type": "http", "url": "https://mcp.example.com"},
         http_get=lambda url, timeout: object(),
+        resolve_host=lambda host: ["93.184.216.34"],
     )
 
     assert result.reachable is True
@@ -109,7 +110,9 @@ def test_check_reachability_http_failure() -> None:
         raise ConnectionError("refused")
 
     result = check_reachability(
-        {"type": "http", "url": "https://mcp.example.com"}, http_get=failing_get
+        {"type": "http", "url": "https://mcp.example.com"},
+        http_get=failing_get,
+        resolve_host=lambda host: ["93.184.216.34"],
     )
 
     assert result.reachable is False
@@ -124,5 +127,78 @@ def test_check_reachability_url_without_type_is_invalid_config() -> None:
 
 def test_check_reachability_unsupported_type_returns_not_reachable() -> None:
     result = check_reachability({"type": "ws", "url": "wss://mcp.example.com"})
+
+    assert result.reachable is False
+
+
+def test_check_reachability_http_blocks_loopback_target_without_making_request() -> None:
+    calls = []
+
+    def spy_get(url: str, timeout: float):
+        calls.append(url)
+        return object()
+
+    result = check_reachability(
+        {"type": "http", "url": "http://127.0.0.1:8000/admin"},
+        http_get=spy_get,
+        resolve_host=lambda host: ["127.0.0.1"],
+    )
+
+    assert result.reachable is False
+    assert calls == []
+
+
+def test_check_reachability_http_blocks_link_local_metadata_address() -> None:
+    calls = []
+
+    def spy_get(url: str, timeout: float):
+        calls.append(url)
+        return object()
+
+    result = check_reachability(
+        {"type": "http", "url": "http://169.254.169.254/latest/meta-data/"},
+        http_get=spy_get,
+        resolve_host=lambda host: ["169.254.169.254"],
+    )
+
+    assert result.reachable is False
+    assert calls == []
+
+
+def test_check_reachability_http_blocks_hostname_resolving_to_private_ip() -> None:
+    calls = []
+
+    def spy_get(url: str, timeout: float):
+        calls.append(url)
+        return object()
+
+    result = check_reachability(
+        {"type": "http", "url": "http://internal.attacker-controlled.test/"},
+        http_get=spy_get,
+        resolve_host=lambda host: ["10.0.0.5"],
+    )
+
+    assert result.reachable is False
+    assert calls == []
+
+
+def test_check_reachability_http_allows_public_address() -> None:
+    result = check_reachability(
+        {"type": "http", "url": "https://mcp.example.com"},
+        http_get=lambda url, timeout: object(),
+        resolve_host=lambda host: ["93.184.216.34"],
+    )
+
+    assert result.reachable is True
+
+
+def test_check_reachability_http_blocks_when_hostname_does_not_resolve() -> None:
+    def resolve_that_fails(host: str) -> list[str]:
+        raise OSError("name resolution failed")
+
+    result = check_reachability(
+        {"type": "http", "url": "https://does-not-resolve.invalid"},
+        resolve_host=resolve_that_fails,
+    )
 
     assert result.reachable is False

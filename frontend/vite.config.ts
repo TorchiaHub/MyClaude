@@ -8,6 +8,11 @@ export default defineConfig({
     proxy: {
       '/health': 'http://localhost:8000',
       '/system': 'http://localhost:8000',
+      '/config': 'http://localhost:8000',
+      '/mcp': 'http://localhost:8000',
+      '/library': 'http://localhost:8000',
+      '/projects': 'http://localhost:8000',
+      '/telemetry': 'http://localhost:8000',
     },
   },
 })

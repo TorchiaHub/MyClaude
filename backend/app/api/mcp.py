@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.dependencies import get_claude_json_path
-from app.mcp_manager import add_server, list_servers, remove_server
+from app.mcp_manager import add_server, check_reachability, list_servers, remove_server
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -60,3 +60,19 @@ def delete_server(
     removed = remove_server(config_path, name)
     if not removed:
         raise HTTPException(status_code=404, detail=f"MCP server '{name}' not found")
+
+
+@router.post("/servers/{name}/test")
+def test_server(
+    name: str, body: McpServerScope, claude_json_path: Path = Depends(get_claude_json_path)
+) -> dict:
+    config_path = _resolve_config_path(body.scope, body.project_path, claude_json_path)
+    project_mcp_path = config_path if body.scope == "project" else None
+
+    entries = list_servers(claude_json_path, project_mcp_path)
+    entry = next((e for e in entries if e.name == name), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"MCP server '{name}' not found")
+
+    result = check_reachability(entry.config)
+    return {"reachable": result.reachable, "detail": result.detail}

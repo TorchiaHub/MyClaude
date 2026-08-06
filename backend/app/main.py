@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from app.api import config, health, library, mcp, projects, system
+from app.api import config, health, library, mcp, projects, system, telemetry
 from app.static import mount_frontend
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -16,6 +16,7 @@ def create_app() -> FastAPI:
     app.include_router(mcp.router)
     app.include_router(library.router)
     app.include_router(projects.router)
+    app.include_router(telemetry.router)
     mount_frontend(app, FRONTEND_DIST)
     return app
 

@@ -113,3 +113,28 @@ def test_delete_server_returns_404_when_not_found(tmp_path: Path) -> None:
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+
+def test_post_server_test_returns_reachable_true_for_known_command(tmp_path: Path) -> None:
+    claude_json = tmp_path / ".claude.json"
+    write_json(claude_json, {"mcpServers": {"ollama": {"command": "python3"}}})
+    app.dependency_overrides[get_claude_json_path] = lambda: claude_json
+
+    response = client.post("/mcp/servers/ollama/test", json={"scope": "global"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["reachable"] is True
+
+
+def test_post_server_test_returns_404_when_server_not_found(tmp_path: Path) -> None:
+    claude_json = tmp_path / ".claude.json"
+    write_json(claude_json, {"mcpServers": {}})
+    app.dependency_overrides[get_claude_json_path] = lambda: claude_json
+
+    response = client.post("/mcp/servers/ghost/test", json={"scope": "global"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
