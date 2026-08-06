@@ -4,7 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-This repo is **pre-implementation**: only planning documentation and imported reference skills exist (`docs/`, `DESIGN.md`, `.claude/skills/`). There is no `backend/` or `frontend/` yet, no build system, no tests, no lint config — so there are no build/lint/test commands to document until Fase 0 of the implementation plan is executed. Once that scaffolding exists, this file should be updated with the real commands (expected: `pytest` for backend, `npm`/`vite` for frontend, a `start.sh` launcher — see roadmap below).
+Fase 0 (bootstrap) and Fase 1 (core backend) of the implementation plan are done. `backend/` (FastAPI) and `frontend/` (Vite/React/TS) exist and are wired together; the backend now also exposes read-mostly APIs backed by real Claude Code data: `config_reader`, `mcp_manager`, `library_registry`, `project_discovery`, one SQLite-backed index (`app/db/connection.py`). Fase 2 onward (UI panels, telemetry, canvas, activation engine, comparator, ...) is not yet built — see [IMPLEMENTATION_PLAN.md](docs/planning/IMPLEMENTATION_PLAN.md) for what's next.
+
+### Common commands
+
+Backend (from `backend/`, via `uv`):
+```
+uv run pytest -q                              # tests
+uv run pytest -q --cov=app --cov-report=term-missing  # tests + coverage (must stay >=80%)
+uv run pytest tests/config_reader -q          # single module's tests
+uv run ruff check .                           # lint
+uv run black .                                # format
+```
+
+Frontend (from `frontend/`, via `npm`):
+```
+npm run dev            # vite dev server (proxies /health, /system/* to backend on :8000)
+npm run build           # tsc -b && vite build -> dist/, served by the backend
+npm run lint             # eslint
+npm run format            # prettier --write
+```
+
+Whole app: `./start.sh` from the repo root — builds the frontend if `frontend/dist` is missing, launches the backend (which also serves the built frontend), opens the browser, and blocks until the backend exits (the UI's "Spegni" button calls `POST /system/shutdown`, which terminates the process).
+
+### Backend module layout
+
+Each module under `backend/app/` has a matching test package under `backend/tests/` (e.g. `app/config_reader/` ↔ `tests/config_reader/`). Tests never touch the developer's real `~/.claude.json`/`~/.claude/` — they use `tmp_path` fixtures and, for FastAPI routes, override the path/DB dependencies declared in `app/api/dependencies.py` (`get_claude_json_path`, `get_global_settings_path`, `get_claude_home_path`, `get_db_connection`) via `app.dependency_overrides`. `app/db/connection.py`'s SQLite connection is opened with `check_same_thread=False` because FastAPI runs sync routes in a threadpool — safe here since this is a single-user local desktop app with one SQLite file, not a concurrent multi-writer service.
+
+A known, deliberately-replicated Claude Code quirk: `compute_effective_permissions` in `app/config_reader/__init__.py` does **not** implement the documented "permissions merge across scopes" behavior for `settings.local.json` — it replicates the real, buggy behavior where local settings *replace* (not append to) the merged user+project permission lists, per-rule-type. See the reference doc cited below before changing this function.
 
 ## What this project is
 
@@ -22,7 +49,7 @@ Explicit non-goals (do not drift toward these): not an IDE (no source editor, no
 - **[docs/claude-code-reference/](docs/claude-code-reference/)** — verified-from-primary-sources reference on Claude Code itself (skills/agents/commands, hooks/MCP/permissions, plugins/marketplace/config, full docs coverage map). **Consult this before writing any code against a Claude Code surface** (hook format, plugin schema, permission syntax, transcript format) — do not rely on prior/assumed knowledge, which may be stale.
 - **[docs/](docs/)** — supporting research (activity-control mechanisms, interactive UI frameworks, community tooling landscape).
 
-## Architecture (as planned — not yet built)
+## Architecture (Fase 0–1 built; rest as planned)
 
 Stack: **Python 3.12 + FastAPI** backend (serves REST + WebSocket + the built frontend) and **React (Vite) + TypeScript** frontend, with **React Flow** for the node canvas, **Zustand** for client state, **TanStack Query** for server state. Storage: a user-level SQLite index (`~/.claude-control-plane/index.sqlite`) for indexing/logging only — actual package content lives on the filesystem, either inside the project (`.claude-control-plane/packages/<id>/`) or under the user home for global packages (`~/.claude-control-plane/global-packages/<id>/`). Full rationale and schema in [ARCHITECTURE.md](docs/planning/ARCHITECTURE.md).
 
