@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-Fase 0 (bootstrap) and Fase 1 (core backend) of the implementation plan are done. `backend/` (FastAPI) and `frontend/` (Vite/React/TS) exist and are wired together; the backend now also exposes read-mostly APIs backed by real Claude Code data: `config_reader`, `mcp_manager`, `library_registry`, `project_discovery`, one SQLite-backed index (`app/db/connection.py`). Fase 2 onward (UI panels, telemetry, canvas, activation engine, comparator, ...) is not yet built — see [IMPLEMENTATION_PLAN.md](docs/planning/IMPLEMENTATION_PLAN.md) for what's next.
+Fase 0 (bootstrap), Fase 1 (core backend), and Fase 2 (UI base + telemetry) of the implementation plan are done. `backend/` (FastAPI) exposes read-mostly APIs backed by real Claude Code data — `config_reader`, `mcp_manager` (incl. add/remove/test-reachability), `library_registry`, `project_discovery`, `telemetry_reader` (transcript `.jsonl` parsing + cumulative usage from `~/.claude.json`) — plus one SQLite-backed index (`app/db/connection.py`). `frontend/` (Vite/React/TS) has a working panel shell (Zustand nav + TanStack Query) with four functional panels: Configuration Manager (read-only), MCP Hub (full CRUD + reachability test), Library & Organization (folder/tag/bookmark), Token & Cost Dashboard (stat tiles + SVG bar chart, dataviz-skill categorical palette). Fase 3 onward (canvas, activation engine, comparator, ...) is not yet built — see [IMPLEMENTATION_PLAN.md](docs/planning/IMPLEMENTATION_PLAN.md) for what's next, including the deferred-risk table (currently: missing CORS/Origin validation on mutating endpoints, and a timestamp-string-comparison edge case in `telemetry_reader.summary`).
 
 ### Common commands
 
@@ -49,7 +49,7 @@ Explicit non-goals (do not drift toward these): not an IDE (no source editor, no
 - **[docs/claude-code-reference/](docs/claude-code-reference/)** — verified-from-primary-sources reference on Claude Code itself (skills/agents/commands, hooks/MCP/permissions, plugins/marketplace/config, full docs coverage map). **Consult this before writing any code against a Claude Code surface** (hook format, plugin schema, permission syntax, transcript format) — do not rely on prior/assumed knowledge, which may be stale.
 - **[docs/](docs/)** — supporting research (activity-control mechanisms, interactive UI frameworks, community tooling landscape).
 
-## Architecture (Fase 0–1 built; rest as planned)
+## Architecture (Fase 0–2 built; rest as planned)
 
 Stack: **Python 3.12 + FastAPI** backend (serves REST + WebSocket + the built frontend) and **React (Vite) + TypeScript** frontend, with **React Flow** for the node canvas, **Zustand** for client state, **TanStack Query** for server state. Storage: a user-level SQLite index (`~/.claude-control-plane/index.sqlite`) for indexing/logging only — actual package content lives on the filesystem, either inside the project (`.claude-control-plane/packages/<id>/`) or under the user home for global packages (`~/.claude-control-plane/global-packages/<id>/`). Full rationale and schema in [ARCHITECTURE.md](docs/planning/ARCHITECTURE.md).
 
