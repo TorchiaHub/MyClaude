@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api import (
     activity,
+    claude_home,
     config,
     filesystem_extensions,
     health,
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(activity.router)
     app.include_router(hooks.router)
     app.include_router(filesystem_extensions.router)
+    app.include_router(claude_home.router)
     mount_frontend(app, FRONTEND_DIST)
     return app
 

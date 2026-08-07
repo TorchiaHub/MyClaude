@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ActivityMonitor } from './panels/ActivityMonitor'
+import { ClaudeGlobal } from './panels/ClaudeGlobal'
 import { Comparator } from './panels/Comparator'
 import { ConfigurationManager } from './panels/ConfigurationManager'
 import { Dashboard } from './panels/Dashboard'
@@ -21,6 +22,7 @@ const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'comparator', label: 'Comparator' },
   { key: 'filesystem', label: 'Estensioni Filesystem' },
   { key: 'import-export', label: 'Import / Export' },
+  { key: 'claude-global', label: 'Claude Globale' },
 ]
 
 function ActivePanel({ panel }: { panel: PanelKey }) {
@@ -43,6 +45,8 @@ function ActivePanel({ panel }: { panel: PanelKey }) {
       return <FilesystemExtensions />
     case 'import-export':
       return <ImportExport />
+    case 'claude-global':
+      return <ClaudeGlobal />
   }
 }
 

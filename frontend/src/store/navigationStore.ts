@@ -10,6 +10,7 @@ export type PanelKey =
   | 'comparator'
   | 'filesystem'
   | 'import-export'
+  | 'claude-global'
 
 interface NavigationState {
   activePanel: PanelKey

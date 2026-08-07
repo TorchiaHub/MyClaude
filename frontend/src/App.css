@@ -670,3 +670,69 @@ button {
   margin: 4px 0 0;
   padding: 0;
 }
+
+/* Claude Globale */
+
+.claude-home-browser {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.claude-home-tree-panel {
+  max-height: 600px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.claude-home-preview-panel {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.claude-home-tree {
+  list-style: none;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.claude-home-tree-panel > .claude-home-tree {
+  padding-left: 0;
+}
+
+.claude-home-tree-entry {
+  margin: 2px 0;
+}
+
+.claude-home-tree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.claude-home-tree-row > button:first-child {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  text-align: left;
+}
+
+.claude-home-tree-row > button:first-child.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.claude-home-tree-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.claude-home-tree-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
