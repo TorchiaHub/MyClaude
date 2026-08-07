@@ -15,6 +15,7 @@ from app.api import (
     system,
     telemetry,
 )
+from app.origin_guard import OriginGuardMiddleware
 from app.static import mount_frontend
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -22,6 +23,7 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Claude Code Control Plane")
+    app.add_middleware(OriginGuardMiddleware)
     app.include_router(health.router)
     app.include_router(system.router)
     app.include_router(config.router)
