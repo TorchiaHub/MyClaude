@@ -7,6 +7,7 @@ from app.config_reader import (
     read_global_settings,
     read_local_settings,
     read_project_mcp_config,
+    replace_permission_rules,
 )
 
 
@@ -106,3 +107,50 @@ def test_compute_effective_permissions_local_settings_only_overrides_defined_rul
 
     assert result["allow"] == ["Bash(git *)", "Edit(src/**)"]
     assert result["deny"] == ["Bash(curl *)"]
+
+
+def test_replace_permission_rules_replaces_allow_ask_deny() -> None:
+    settings = {"permissions": {"allow": ["Bash(git *)"], "ask": [], "deny": []}}
+
+    result = replace_permission_rules(
+        settings, {"allow": ["Edit(*)"], "ask": ["Bash(rm *)"], "deny": []}
+    )
+
+    assert result["permissions"]["allow"] == ["Edit(*)"]
+    assert result["permissions"]["ask"] == ["Bash(rm *)"]
+    assert result["permissions"]["deny"] == []
+
+
+def test_replace_permission_rules_preserves_other_permission_keys() -> None:
+    settings = {"permissions": {"allow": [], "ask": [], "deny": [], "defaultMode": "acceptEdits"}}
+
+    result = replace_permission_rules(settings, {"allow": ["Edit(*)"], "ask": [], "deny": []})
+
+    assert result["permissions"]["defaultMode"] == "acceptEdits"
+
+
+def test_replace_permission_rules_preserves_other_top_level_keys() -> None:
+    settings = {
+        "permissions": {"allow": [], "ask": [], "deny": []},
+        "model": "sonnet",
+        "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "echo hi"}]}]},
+    }
+
+    result = replace_permission_rules(settings, {"allow": ["Edit(*)"], "ask": [], "deny": []})
+
+    assert result["model"] == "sonnet"
+    assert result["hooks"] == settings["hooks"]
+
+
+def test_replace_permission_rules_works_when_settings_has_no_permissions_key() -> None:
+    result = replace_permission_rules({}, {"allow": ["Edit(*)"], "ask": [], "deny": []})
+
+    assert result["permissions"] == {"allow": ["Edit(*)"], "ask": [], "deny": []}
+
+
+def test_replace_permission_rules_does_not_mutate_input() -> None:
+    settings = {"permissions": {"allow": ["Bash(git *)"], "ask": [], "deny": []}}
+
+    replace_permission_rules(settings, {"allow": ["Edit(*)"], "ask": [], "deny": []})
+
+    assert settings["permissions"]["allow"] == ["Bash(git *)"]

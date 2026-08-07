@@ -2,6 +2,16 @@ from pathlib import Path
 
 from app.json_store import read_json
 
+__all__ = [
+    "PERMISSION_RULE_TYPES",
+    "read_global_config",
+    "read_global_settings",
+    "read_local_settings",
+    "read_project_mcp_config",
+    "compute_effective_permissions",
+    "replace_permission_rules",
+]
+
 PERMISSION_RULE_TYPES = ("allow", "ask", "deny")
 
 
@@ -44,3 +54,13 @@ def compute_effective_permissions(
             effective[rule_type] = list(local_permissions[rule_type])
 
     return effective
+
+
+def replace_permission_rules(settings: dict, rules: dict[str, list[str]]) -> dict:
+    """Return a new settings dict with permissions.allow/ask/deny replaced by
+    `rules`, preserving every other key in `settings` and every other key
+    already present in `settings["permissions"]` (e.g. `defaultMode`)."""
+    return {
+        **settings,
+        "permissions": {**settings.get("permissions", {}), **rules},
+    }

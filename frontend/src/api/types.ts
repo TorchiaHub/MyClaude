@@ -14,6 +14,7 @@ export interface ProjectConfig {
   settings: Record<string, unknown>
   local_settings: Record<string, unknown>
   mcp_servers: Record<string, McpServerConfig>
+  own_permissions: EffectivePermissions
   effective_permissions: EffectivePermissions
 }
 

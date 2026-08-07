@@ -159,6 +159,42 @@ button {
   overflow-y: auto;
 }
 
+.permission-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.permission-rule-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.permission-rule-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.permission-add-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.permission-add-form input {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.permission-add-form button {
+  padding: 4px 10px;
+}
+
 .add-server-form {
   display: flex;
   gap: 8px;
