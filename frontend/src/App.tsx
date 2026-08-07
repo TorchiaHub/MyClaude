@@ -4,6 +4,7 @@ import { Comparator } from './panels/Comparator'
 import { ConfigurationManager } from './panels/ConfigurationManager'
 import { Dashboard } from './panels/Dashboard'
 import { FilesystemExtensions } from './panels/FilesystemExtensions'
+import { ImportExport } from './panels/ImportExport'
 import { Library } from './panels/Library'
 import { McpHub } from './panels/McpHub'
 import { PackageCanvas } from './panels/PackageCanvas'
@@ -19,6 +20,7 @@ const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'activity', label: 'Live Activity Monitor' },
   { key: 'comparator', label: 'Comparator' },
   { key: 'filesystem', label: 'Estensioni Filesystem' },
+  { key: 'import-export', label: 'Import / Export' },
 ]
 
 function ActivePanel({ panel }: { panel: PanelKey }) {
@@ -39,6 +41,8 @@ function ActivePanel({ panel }: { panel: PanelKey }) {
       return <Comparator />
     case 'filesystem':
       return <FilesystemExtensions />
+    case 'import-export':
+      return <ImportExport />
   }
 }
 

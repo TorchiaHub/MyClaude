@@ -10,10 +10,12 @@ from app.api.dependencies import (
     get_claude_json_path,
     get_control_plane_home,
     get_db_connection,
+    get_home_path,
 )
 from app.comparator import compare_static
 from app.comparator.historical import combination_mode_summary, isolated_mode_summary
 from app.library_registry import scan_library
+from app.mcp_manager import list_servers
 from app.package_registry import (
     InvalidPackageIdentifierError,
     Package,
@@ -21,8 +23,11 @@ from app.package_registry import (
     create_package,
     delete_package,
     get_package,
+    import_package,
 )
 from app.package_registry import list_packages as list_packages_registry
+from app.package_registry.dependencies import detect_missing_dependencies
+from app.sanitizer import build_export_bundle
 
 router = APIRouter(prefix="/packages", tags=["packages"])
 
@@ -50,6 +55,14 @@ class PackageCreate(BaseModel):
     description: str = ""
     nodes: list[PackageNodeIn] = []
     canvas_layout: dict = {}
+
+
+class PackageImportRequest(BaseModel):
+    bundle: dict
+    id: str
+    scope: str
+    project_path: str | None = None
+    folder: str | None = None
 
 
 def _serialize(package: Package) -> dict:
@@ -283,6 +296,54 @@ def get_compare(
     return result
 
 
+def _local_dependency_names(
+    claude_home: Path, claude_json_path: Path, project_path: str | None
+) -> dict[str, set[str]]:
+    project_dir = Path(project_path) if project_path else None
+    library_items = scan_library(claude_home, project_dir)
+    mcp_servers = list_servers(
+        claude_json_path, (project_dir / ".mcp.json") if project_dir else None
+    )
+    return {
+        "skill": {i.name for i in library_items if i.resource_type == "skill"},
+        "agent": {i.name for i in library_items if i.resource_type == "agent"},
+        "command": {i.name for i in library_items if i.resource_type == "command"},
+        "mcp": {entry.name for entry in mcp_servers},
+    }
+
+
+@router.post("/import", status_code=201)
+def post_package_import(
+    body: PackageImportRequest,
+    control_plane_home: Path = Depends(get_control_plane_home),
+    claude_home: Path = Depends(get_claude_home_path),
+    claude_json_path: Path = Depends(get_claude_json_path),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    try:
+        package = import_package(
+            control_plane_home,
+            conn,
+            bundle=body.bundle,
+            id=body.id,
+            scope=body.scope,
+            project_path=body.project_path,
+            folder=body.folder,
+        )
+    except InvalidPackageIdentifierError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    local = _local_dependency_names(claude_home, claude_json_path, body.project_path)
+    missing = detect_missing_dependencies(
+        body.bundle,
+        local_skill_names=local["skill"],
+        local_agent_names=local["agent"],
+        local_command_names=local["command"],
+        local_mcp_server_names=local["mcp"],
+    )
+    return {"package": _serialize(package), "missing_dependencies": missing}
+
+
 @router.get("/{package_id}")
 def get_package_by_id(
     package_id: str, conn: sqlite3.Connection = Depends(get_db_connection)
@@ -296,6 +357,16 @@ def delete_package_by_id(
 ) -> None:
     _get_package_or_404(conn, package_id)
     delete_package(conn, package_id)
+
+
+@router.get("/{package_id}/export")
+def get_package_export(
+    package_id: str,
+    home: Path = Depends(get_home_path),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    package = _get_package_or_404(conn, package_id)
+    return build_export_bundle(package.content_path, package, home)
 
 
 @router.get("/{package_id}/preview-activation")

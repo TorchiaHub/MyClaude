@@ -13,6 +13,7 @@ __all__ = [
     "InvalidPackageIdentifierError",
     "resolve_content_path",
     "create_package",
+    "import_package",
     "get_package",
     "list_packages",
     "delete_package",
@@ -89,18 +90,17 @@ def create_package(
         },
     )
 
-    conn.execute(
-        """
-        INSERT INTO packages (id, name, version, scope, project_path, content_path, folder, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            name=excluded.name, version=excluded.version, scope=excluded.scope,
-            project_path=excluded.project_path, content_path=excluded.content_path,
-            folder=excluded.folder, updated_at=excluded.updated_at
-        """,
-        (id, name, version, scope, project_path, str(content_path), folder, updated_at),
+    _upsert_package_row(
+        conn,
+        id=id,
+        name=name,
+        version=version,
+        scope=scope,
+        project_path=project_path,
+        content_path=content_path,
+        folder=folder,
+        updated_at=updated_at,
     )
-    conn.commit()
 
     return Package(
         id=id,
@@ -114,6 +114,110 @@ def create_package(
         updated_at=updated_at,
         canvas_layout=canvas_layout,
     )
+
+
+def import_package(
+    control_plane_home: Path,
+    conn: sqlite3.Connection,
+    *,
+    bundle: dict,
+    id: str,
+    scope: Scope,
+    project_path: str | None,
+    folder: str | None = None,
+) -> Package:
+    content_path = resolve_content_path(
+        control_plane_home, scope=scope, project_path=project_path, package_id=id
+    )
+    content_path.mkdir(parents=True, exist_ok=True)
+
+    for relative_path, content in bundle.get("files", {}).items():
+        _write_bundle_file(content_path, relative_path, content)
+
+    name = bundle.get("name", id)
+    version = bundle.get("version", "0.0.0")
+    description = bundle.get("description", "")
+    canvas_layout = bundle.get("canvas_layout", {})
+    resolved_folder = folder if folder is not None else bundle.get("folder")
+    updated_at = int(time.time())
+
+    write_json(
+        content_path / "package.json",
+        {
+            "id": id,
+            "name": name,
+            "version": version,
+            "scope": scope,
+            "description": description,
+            "folder": resolved_folder,
+            "canvas_layout": canvas_layout,
+        },
+    )
+
+    _upsert_package_row(
+        conn,
+        id=id,
+        name=name,
+        version=version,
+        scope=scope,
+        project_path=project_path,
+        content_path=content_path,
+        folder=resolved_folder,
+        updated_at=updated_at,
+    )
+
+    return Package(
+        id=id,
+        name=name,
+        version=version,
+        scope=scope,
+        project_path=project_path,
+        content_path=content_path,
+        folder=resolved_folder,
+        description=description,
+        updated_at=updated_at,
+        canvas_layout=canvas_layout,
+    )
+
+
+def _upsert_package_row(
+    conn: sqlite3.Connection,
+    *,
+    id: str,
+    name: str,
+    version: str,
+    scope: Scope,
+    project_path: str | None,
+    content_path: Path,
+    folder: str | None,
+    updated_at: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO packages (id, name, version, scope, project_path, content_path, folder, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name, version=excluded.version, scope=excluded.scope,
+            project_path=excluded.project_path, content_path=excluded.content_path,
+            folder=excluded.folder, updated_at=excluded.updated_at
+        """,
+        (id, name, version, scope, project_path, str(content_path), folder, updated_at),
+    )
+    conn.commit()
+
+
+def _write_bundle_file(content_path: Path, relative_path: str, content: str) -> None:
+    if Path(relative_path).is_absolute():
+        raise InvalidPackageIdentifierError(f"Bundle file path '{relative_path}' must be relative")
+
+    target = (content_path / relative_path).resolve()
+    if not target.is_relative_to(content_path.resolve()):
+        raise InvalidPackageIdentifierError(
+            f"Bundle file path '{relative_path}' escapes the package content directory"
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
 
 
 def get_package(conn: sqlite3.Connection, package_id: str) -> Package | None:

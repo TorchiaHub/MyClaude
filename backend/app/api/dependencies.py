@@ -18,6 +18,10 @@ def get_claude_home_path() -> Path:
     return Path.home() / ".claude"
 
 
+def get_home_path() -> Path:
+    return Path.home()
+
+
 def get_control_plane_home() -> Path:
     return Path.home() / ".claude-control-plane"
 
