@@ -40,6 +40,7 @@ export interface LibraryItem {
   name: string
   description: string
   folder: string
+  path: string
   tags: string[]
   bookmarked: boolean
 }

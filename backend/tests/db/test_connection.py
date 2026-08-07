@@ -21,7 +21,14 @@ def test_connect_initializes_schema_tables(tmp_path: Path) -> None:
     }
     conn.close()
 
-    assert {"library_item_tags", "library_bookmarks", "registered_projects"} <= tables
+    assert {
+        "library_item_tags",
+        "library_bookmarks",
+        "registered_projects",
+        "packages",
+        "activation_log",
+        "written_files",
+    } <= tables
 
 
 def test_connect_is_idempotent_across_calls(tmp_path: Path) -> None:

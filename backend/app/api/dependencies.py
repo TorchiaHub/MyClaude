@@ -17,6 +17,10 @@ def get_claude_home_path() -> Path:
     return Path.home() / ".claude"
 
 
+def get_control_plane_home() -> Path:
+    return Path.home() / ".claude-control-plane"
+
+
 def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
     conn = connect(default_db_path())
     try:

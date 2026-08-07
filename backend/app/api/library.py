@@ -31,6 +31,7 @@ def get_library(
             "name": item.name,
             "description": item.description,
             "folder": item.folder,
+            "path": item.path,
             "tags": sorted(set(item.tags) | set(get_tags(conn, item.id))),
             "bookmarked": is_bookmarked(conn, item.id),
         }

@@ -13,6 +13,8 @@ export default defineConfig({
       '/library': 'http://localhost:8000',
       '/projects': 'http://localhost:8000',
       '/telemetry': 'http://localhost:8000',
+      '/packages': 'http://localhost:8000',
+      '/activity': { target: 'http://localhost:8000', ws: true },
     },
   },
 })

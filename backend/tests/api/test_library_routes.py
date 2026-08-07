@@ -34,6 +34,7 @@ def test_get_library_returns_scanned_items_with_tags_and_bookmarks(tmp_path: Pat
     assert len(body) == 1
     assert body[0]["name"] == "deploy"
     assert body[0]["bookmarked"] is False
+    assert body[0]["path"] == str(claude_home / "skills" / "deploy" / "SKILL.md")
 
 
 def test_post_bookmark_sets_item_as_bookmarked(tmp_path: Path) -> None:

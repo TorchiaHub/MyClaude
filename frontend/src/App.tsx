@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { ActivityMonitor } from './panels/ActivityMonitor'
 import { ConfigurationManager } from './panels/ConfigurationManager'
 import { Dashboard } from './panels/Dashboard'
 import { Library } from './panels/Library'
 import { McpHub } from './panels/McpHub'
+import { PackageCanvas } from './panels/PackageCanvas'
 import { useNavigationStore, type PanelKey } from './store/navigationStore'
 import './App.css'
 
@@ -11,6 +13,8 @@ const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'mcp', label: 'MCP Hub' },
   { key: 'library', label: 'Library' },
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'canvas', label: 'Canvas Pacchetti' },
+  { key: 'activity', label: 'Live Activity Monitor' },
 ]
 
 function ActivePanel({ panel }: { panel: PanelKey }) {
@@ -23,6 +27,10 @@ function ActivePanel({ panel }: { panel: PanelKey }) {
       return <Library />
     case 'dashboard':
       return <Dashboard />
+    case 'canvas':
+      return <PackageCanvas />
+    case 'activity':
+      return <ActivityMonitor />
   }
 }
 
