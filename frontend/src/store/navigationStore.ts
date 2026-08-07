@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type PanelKey =
-  'config' | 'mcp' | 'library' | 'dashboard' | 'canvas' | 'activity' | 'comparator'
+  'config' | 'mcp' | 'library' | 'dashboard' | 'canvas' | 'activity' | 'comparator' | 'filesystem'
 
 interface NavigationState {
   activePanel: PanelKey

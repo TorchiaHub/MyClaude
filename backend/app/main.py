@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api import (
     activity,
     config,
+    filesystem_extensions,
     health,
     hooks,
     library,
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(packages.router)
     app.include_router(activity.router)
     app.include_router(hooks.router)
+    app.include_router(filesystem_extensions.router)
     mount_frontend(app, FRONTEND_DIST)
     return app
 
