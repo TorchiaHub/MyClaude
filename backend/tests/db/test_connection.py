@@ -28,6 +28,7 @@ def test_connect_initializes_schema_tables(tmp_path: Path) -> None:
         "packages",
         "activation_log",
         "written_files",
+        "session_started",
     } <= tables
 
 

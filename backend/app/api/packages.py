@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.activation_engine import activate_package, deactivate_package, preview_activation
@@ -11,6 +11,8 @@ from app.api.dependencies import (
     get_control_plane_home,
     get_db_connection,
 )
+from app.comparator import compare_static
+from app.comparator.historical import combination_mode_summary, isolated_mode_summary
 from app.library_registry import scan_library
 from app.package_registry import (
     InvalidPackageIdentifierError,
@@ -151,6 +153,134 @@ def post_package(
     except InvalidPackageIdentifierError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _serialize(package)
+
+
+def _serialize_static_diff(diff) -> dict:
+    return {
+        "package_a_id": diff.package_a_id,
+        "package_b_id": diff.package_b_id,
+        "is_identical": diff.is_identical,
+        "by_type": {
+            node_type: {
+                "only_in_a": type_diff.only_in_a,
+                "only_in_b": type_diff.only_in_b,
+                "common": type_diff.common,
+            }
+            for node_type, type_diff in diff.by_type.items()
+        },
+    }
+
+
+def _serialize_isolated_summary(summary) -> dict:
+    return {
+        "package_id": summary.package_id,
+        "windows": summary.windows,
+        "turn_count": summary.turn_count,
+        "period_input_tokens": summary.period_input_tokens,
+        "period_output_tokens": summary.period_output_tokens,
+        "tokens_by_model": summary.tokens_by_model,
+    }
+
+
+def _serialize_telemetry(telemetry) -> dict:
+    return {
+        "turn_count": telemetry.turn_count,
+        "period_input_tokens": telemetry.period_input_tokens,
+        "period_output_tokens": telemetry.period_output_tokens,
+        "tokens_by_model": telemetry.tokens_by_model,
+    }
+
+
+@router.get("/compare")
+def get_compare(
+    mode: str = Query(...),
+    a: str | None = Query(default=None),
+    b: str | None = Query(default=None),
+    project_path: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    until: str | None = Query(default=None),
+    since_a: str | None = Query(default=None),
+    until_a: str | None = Query(default=None),
+    since_b: str | None = Query(default=None),
+    until_b: str | None = Query(default=None),
+    claude_home: Path = Depends(get_claude_home_path),
+    claude_json_path: Path = Depends(get_claude_json_path),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    if mode not in ("static", "combination", "isolated"):
+        raise HTTPException(status_code=400, detail=f"Unknown mode '{mode}'")
+
+    result: dict = {}
+
+    if mode in ("static", "isolated"):
+        if not a or not b:
+            raise HTTPException(status_code=400, detail="mode requires 'a' and 'b' package ids")
+        package_a = _get_package_or_404(conn, a)
+        package_b = _get_package_or_404(conn, b)
+        result["static_diff"] = _serialize_static_diff(compare_static(package_a, package_b))
+
+    if mode == "isolated":
+        if not project_path:
+            raise HTTPException(status_code=400, detail="mode='isolated' requires project_path")
+        result["isolated"] = {
+            "a": _serialize_isolated_summary(
+                isolated_mode_summary(
+                    conn,
+                    claude_json_path,
+                    claude_home / "projects",
+                    project_path,
+                    a,
+                    since=since,
+                    until=until,
+                )
+            ),
+            "b": _serialize_isolated_summary(
+                isolated_mode_summary(
+                    conn,
+                    claude_json_path,
+                    claude_home / "projects",
+                    project_path,
+                    b,
+                    since=since,
+                    until=until,
+                )
+            ),
+        }
+
+    if mode == "combination":
+        if not project_path or not since_a or not until_a or not since_b or not until_b:
+            raise HTTPException(
+                status_code=400,
+                detail="mode='combination' requires project_path, since_a/until_a, since_b/until_b",
+            )
+        summary_a = combination_mode_summary(
+            conn,
+            claude_json_path,
+            claude_home / "projects",
+            project_path,
+            since=since_a,
+            until=until_a,
+        )
+        summary_b = combination_mode_summary(
+            conn,
+            claude_json_path,
+            claude_home / "projects",
+            project_path,
+            since=since_b,
+            until=until_b,
+        )
+        result["combination"] = {
+            "a": {
+                "active_package_ids": summary_a.active_package_ids,
+                "telemetry": _serialize_telemetry(summary_a.telemetry),
+            },
+            "b": {
+                "active_package_ids": summary_b.active_package_ids,
+                "telemetry": _serialize_telemetry(summary_b.telemetry),
+            },
+        }
+
+    return result
 
 
 @router.get("/{package_id}")

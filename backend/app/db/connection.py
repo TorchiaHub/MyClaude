@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS written_files (
     content_hash TEXT NOT NULL,
     PRIMARY KEY (package_id, project_path, file_path)
 );
+
+-- correlazione sessione -> cwd, popolata dall'hook SessionStart (Fase 4)
+CREATE TABLE IF NOT EXISTS session_started (
+    session_id TEXT PRIMARY KEY,
+    cwd TEXT NOT NULL,
+    started_at INTEGER NOT NULL
+);
 """
 
 

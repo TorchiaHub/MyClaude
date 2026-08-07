@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ActivityMonitor } from './panels/ActivityMonitor'
+import { Comparator } from './panels/Comparator'
 import { ConfigurationManager } from './panels/ConfigurationManager'
 import { Dashboard } from './panels/Dashboard'
 import { Library } from './panels/Library'
@@ -15,6 +16,7 @@ const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'canvas', label: 'Canvas Pacchetti' },
   { key: 'activity', label: 'Live Activity Monitor' },
+  { key: 'comparator', label: 'Comparator' },
 ]
 
 function ActivePanel({ panel }: { panel: PanelKey }) {
@@ -31,6 +33,8 @@ function ActivePanel({ panel }: { panel: PanelKey }) {
       return <PackageCanvas />
     case 'activity':
       return <ActivityMonitor />
+    case 'comparator':
+      return <Comparator />
   }
 }
 
