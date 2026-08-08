@@ -1,0 +1,84 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repository state
+
+Fase 0 (bootstrap), Fase 1 (core backend), Fase 2 (UI base + telemetry), Fase 3 (canvas, activation engine, live activity monitor), Fase 4 (workflow comparator), Fase 5 (read-mostly filesystem-extension panels), and Fase 6 (import/export & marketplace) of the implementation plan are done. `backend/` (FastAPI) exposes APIs backed by real Claude Code data — `config_reader`, `mcp_manager` (incl. add/remove/test-reachability), `library_registry`, `project_discovery`, `telemetry_reader` (transcript `.jsonl` parsing + cumulative usage from `~/.claude.json`), `package_registry` (CRUD for canvas-composed packages, content materialized on the real filesystem, plus `import_package` for materializing an imported bundle and a `dependencies` submodule that diffs a bundle's skill/agent/command/mcp references against what's catalogued locally), `activation_engine` (merge/append into real Claude Code folders with a `written_files` sha256 manifest so manual user edits are never silently deleted, plus the single-active-global-package invariant), `activity_monitor` (session registry + tool_use drill-down, incl. `WS /activity/live`), `hooks_installer` (install/uninstall an additive `SessionStart` hook entry in `~/.claude/settings.json`, port-aware via `PORT` env var matching `start.sh`), `comparator` (static composition diff between two packages + two historical modes — "isolated" and "combination" — that reconstruct activation windows from `activation_log` and cross them with real transcript timestamps), `memory_reader` (per-project MEMORY.md index + topic-file frontmatter), `rules_inspector` (scans user- and project-level `.claude/rules/*.md`, incl. scoped `paths:` patterns), `checkpoint_reader` (reconstructs a checkpoint timeline from transcript `file-history-snapshot`/`file-history-delta` records, always surfacing a `CHECKPOINT_COVERAGE_CAVEAT` — Bash/background-subagent edits are structurally untracked), `sandbox_config` (read-only passthrough of the `sandbox` settings key, no assumed schema), `sanitizer` (strips secrets and local absolute paths from a package before export — redacts sensitive keys in MCP `env`/`headers`/`args`/`url` query params via a `key|token|secret|password|credential|auth` pattern, then a second text-level pass replaces any remaining occurrence of the user's home directory), `home_browser` (list/preview/rename/move/delete anywhere inside `~/.claude/` — the ENTIRE tree, no exclusions, a deliberate scope decision the user made explicitly after being warned of the risk; the one hard boundary that IS enforced is never escaping `root` itself, via `_resolve_safe_path`'s `.resolve()` + parents-containment check, robust against absolute-path substitution and symlinks pointing outside root — plus every mutating function re-validates that the *resolved* target isn't the root itself, closing a CRITICAL found in review where string-literal-only root checks (`""`/`"."`) were bypassable with equivalent forms like `"./"` and let `DELETE` `rmtree` the entire `~/.claude/`), `claude_home_graph` (builds a node/edge graph of the global environment — CLAUDE.md, settings.json, every skill/agent/command/output-style from `library_registry`, every rule from `rules_inspector`, plus real structural edges only: nested-skill parent→child, and hook→script-file when a hook's `command` string references a path that actually exists on disk — no free-text parsing of CLAUDE.md) — plus one SQLite-backed index (`app/db/connection.py`). `frontend/` (Vite/React/TS) has a working panel shell (Zustand nav + TanStack Query) with ten functional panels: Configuration Manager (editable — move/add/remove permission rules across allow/ask/deny, writing directly to `~/.claude/settings.json` for global scope or a project's own `.claude/settings.json` for project scope via `PUT /config/global/permissions` and `PUT /config/project/permissions`; `settings.local.json` stays read-only, never written by this panel), MCP Hub (full CRUD + reachability test), Library & Organization (folder/tag/bookmark), Token & Cost Dashboard (stat tiles + SVG bar chart, dataviz-skill categorical palette), Canvas Pacchetti (React Flow node graph → save/load/activate/deactivate/preview-diff packages), Live Activity Monitor (WS session list + on-demand tool-use drilldown), Comparator (static diff + isolated/combination historical modes, plus a SessionStart-hook install/uninstall toggle), Estensioni Filesystem (Auto Memory / Rules Inspector / Checkpoint Viewer / Sandboxing / Output Styles as five sub-tabs of one panel, matching Fase 5's own "tutte read-mostly" scope — no editing endpoints), Import/Export (per-package sanitized JSON export/download, file-based import with a missing-dependencies report for skills/agents/commands/MCP servers not yet present locally), Claude Globale (a distinct panel from Library — not a replacement — with two sub-tabs: a read-only React Flow canvas of the `claude_home_graph` filtered to connected nodes only plus the two anchor nodes for readability against real datasets of 500+ catalogued items, and a lazy-loaded folder-tree browser over the entire `~/.claude/` covering rename/move/delete with a mandatory native confirm before delete, the only irreversible action). Fase 7 onward (multi-agent monitor) is not yet built — see [IMPLEMENTATION_PLAN.md](docs/planning/IMPLEMENTATION_PLAN.md) for what's next, including the deferred-risk table (currently: a timestamp-string-comparison edge case in `telemetry_reader.summary`, and a narrow race window in the global-package-singleton invariant under concurrent activations). The prior CRITICAL risk — no CORS/Origin validation on mutating endpoints — is resolved: `app/origin_guard.py`'s `OriginGuardMiddleware`, wired globally in `create_app()`, rejects any `POST`/`PUT`/`PATCH`/`DELETE` request whose `Origin` header doesn't match the request's own scheme/host/port, while letting Origin-less requests (curl, the `SessionStart` hook, non-browser tooling) through unchanged.
+
+### Common commands
+
+Backend (from `backend/`, via `uv`):
+```
+uv run pytest -q                              # tests
+uv run pytest -q --cov=app --cov-report=term-missing  # tests + coverage (must stay >=80%)
+uv run pytest tests/config_reader -q          # single module's tests
+uv run ruff check .                           # lint
+uv run black .                                # format
+```
+
+Frontend (from `frontend/`, via `npm`):
+```
+npm run dev            # vite dev server (proxies /health, /system/* to backend on :8000)
+npm run build           # tsc -b && vite build -> dist/, served by the backend
+npm run lint             # eslint
+npm run format            # prettier --write
+```
+
+Whole app: `./start.sh` from the repo root — builds the frontend if `frontend/dist` is missing, launches the backend (which also serves the built frontend), opens the browser, and blocks until the backend exits (the UI's "Spegni" button calls `POST /system/shutdown`, which terminates the process).
+
+### Backend module layout
+
+Each module under `backend/app/` has a matching test package under `backend/tests/` (e.g. `app/config_reader/` ↔ `tests/config_reader/`). Tests never touch the developer's real `~/.claude.json`/`~/.claude/` — they use `tmp_path` fixtures and, for FastAPI routes, override the path/DB dependencies declared in `app/api/dependencies.py` (`get_claude_json_path`, `get_global_settings_path`, `get_claude_home_path`, `get_db_connection`) via `app.dependency_overrides`. `app/db/connection.py`'s SQLite connection is opened with `check_same_thread=False` because FastAPI runs sync routes in a threadpool — safe here since this is a single-user local desktop app with one SQLite file, not a concurrent multi-writer service.
+
+A known, deliberately-replicated Claude Code quirk: `compute_effective_permissions` in `app/config_reader/__init__.py` does **not** implement the documented "permissions merge across scopes" behavior for `settings.local.json` — it replicates the real, buggy behavior where local settings *replace* (not append to) the merged user+project permission lists, per-rule-type. See the reference doc cited below before changing this function.
+
+A security-relevant design constraint in `package_registry`/`activation_engine`: canvas nodes of type skill/agent/command are never trusted with a client-supplied filesystem path. `POST /packages` resolves them server-side via `library_item_id` against `library_registry.scan_library()`'s own catalog, and `package_id`/path-derived node names are validated against a safe-slug pattern (`_validate_safe_identifier`) before ever touching the filesystem. Do not reintroduce a raw `source_path` field on the API surface — that was a real path-traversal/arbitrary-file-copy vulnerability caught in Fase 3 code review before being fixed.
+
+The same distrust applies to `POST /packages/import` (Fase 6): a bundle's `files` dict is externally-sourced data (a JSON file the user downloaded, possibly edited, possibly from someone else), so `import_package`'s `_write_bundle_file` rejects any relative path that is absolute or that resolves outside the target `content_path` (the classic `Path("/a") / "/etc/passwd" == Path("/etc/passwd")` pathlib gotcha applies — absolute bundle paths are rejected explicitly, not just relied on `.resolve()` containment). `sanitizer.build_export_bundle`/`sanitize_mcp_config` redact secrets in MCP `env`/`headers`/`args`/`url` before a package ever leaves the machine — this redaction list was found incomplete in Fase 6 code review (only `env`/`headers` initially) and extended to cover `args`/`url` query params too; if MCP config gains new fields that can carry credentials, extend `sanitize_mcp_config` accordingly rather than assuming `env`/`headers` is exhaustive.
+
+`home_browser` is the app's only genuinely unrestricted filesystem-write surface (rename/move/delete anywhere inside `~/.claude/`, by explicit, informed user choice — not a mistake to "fix" by re-adding exclusions). Its one non-negotiable invariant is that `root` (`~/.claude/`) itself can never be escaped or deleted: `_resolve_safe_path` uses `.resolve()` plus parents-containment (`resolved_root not in candidate.parents`), which is robust against both the pathlib absolute-path-substitution gotcha and symlinks inside root pointing outside it (verified hands-on in code review). A CRITICAL was found and fixed here: the root-itself guard originally compared the raw input string against only `""`/`"."`, so equivalent-but-different-looking forms like `"./"`, `"././"`, or `"sub/.."` slipped through and let `DELETE` `shutil.rmtree()` the entire `~/.claude/` directory in one call. Fixed by comparing the *resolved* candidate path against the *resolved* root instead of pattern-matching the raw string — do not revert to string-based root detection if touching this code. `list_directory` also avoids leaking size/type metadata of symlink targets that resolve outside `root` (reports the symlink's own `lstat()`, never follows it for stat purposes when the target is out of scope).
+
+## What this project is
+
+A **local web app** ("Claude Code Control Plane") for managing, configuring, and visually observing a local Claude Code environment: global/project configuration, skills/agents/commands/output-styles, MCP servers, reusable "packages" (bundles of skills+agents+MCP+rules+prompts composed on a node canvas), activity, and token/cost telemetry.
+
+Explicit non-goals (do not drift toward these): not an IDE (no source editor, no running Claude Code sessions inside the app), not a native app (no Tauri/Electron — pure local web app served over `http://localhost`), not a Claude Code plugin (no `.claude-plugin/` packaging or marketplace registration — it reads/writes the real files Claude Code itself uses), not an always-on daemon (manual start, shutdown via an in-app button), not integrated with the claude.ai account (filesystem-only scope; Routines/Artifacts/cloud Analytics/Remote Control are out of scope).
+
+## Documentation map — read before implementing anything
+
+- **[DESIGN.md](DESIGN.md)** — product goal, requirements, and the architectural decisions from the grilling session (source of truth for *why*).
+- **[docs/planning/README.md](docs/planning/README.md)** — index of the planning docs below.
+  - **[docs/planning/ARCHITECTURE.md](docs/planning/ARCHITECTURE.md)** — stack, backend module breakdown (one responsibility per module), SQLite schema, API contract, proposed repo layout.
+  - **[docs/planning/IMPLEMENTATION_PLAN.md](docs/planning/IMPLEMENTATION_PLAN.md)** — the 8 sequential phases (Fase 0–7) with Definition of Done per phase, cross-cutting risks.
+  - **[docs/planning/TASKS.md](docs/planning/TASKS.md)** — granular, dependency-ordered task list per phase, TDD-first (mark `[x]` only when tests are green).
+- **[docs/claude-code-reference/](docs/claude-code-reference/)** — verified-from-primary-sources reference on Claude Code itself (skills/agents/commands, hooks/MCP/permissions, plugins/marketplace/config, full docs coverage map). **Consult this before writing any code against a Claude Code surface** (hook format, plugin schema, permission syntax, transcript format) — do not rely on prior/assumed knowledge, which may be stale.
+- **[docs/](docs/)** — supporting research (activity-control mechanisms, interactive UI frameworks, community tooling landscape).
+
+## Architecture (Fase 0–4 built; rest as planned)
+
+Stack: **Python 3.12 + FastAPI** backend (serves REST + WebSocket + the built frontend) and **React (Vite) + TypeScript** frontend, with **React Flow** for the node canvas, **Zustand** for client state, **TanStack Query** for server state. Storage: a user-level SQLite index (`~/.claude-control-plane/index.sqlite`) for indexing/logging only — actual package content lives on the filesystem, either inside the project (`.claude-control-plane/packages/<id>/`) or under the user home for global packages (`~/.claude-control-plane/global-packages/<id>/`). Full rationale and schema in [ARCHITECTURE.md](docs/planning/ARCHITECTURE.md).
+
+The backend is organized as one module per responsibility (`config_reader`, `mcp_manager`, `library_registry`, `project_discovery`, `package_registry`, `activation_engine`, `telemetry_reader`, `activity_monitor`, `hooks_installer`, `comparator`, `memory_reader`, `rules_inspector`, `checkpoint_reader`, `sandbox_config`, `sanitizer`, `db`, `api`) — see the module table in ARCHITECTURE.md for what each reads/writes and which real Claude Code file it depends on (`~/.claude.json`, `~/.claude/settings.json`, `.mcp.json`, `.claude/skills|agents|commands|output-styles/`, `~/.claude/projects/**/*.jsonl`, `~/.claude/sessions/*.json`, etc.).
+
+Two invariants that recur across the design and matter for any future change touching activation or config:
+- **Global scope allows exactly one active package at a time**; **project scope allows N active packages simultaneously**. This asymmetry is intentional (global = base environment, project = composable).
+- **Every write to real Claude Code folders is merge/append with a diff preview, never a silent overwrite**, and every removal is checked against a manifest (`written_files` table, content hash) of what the Control Plane itself wrote — so a file the user edited manually after activation is never deleted on deactivation. `settings.local.json` is a known non-merge special case (it overwrites, not merges, global permissions) and must be handled explicitly, never assumed to merge.
+
+## Execution rules for implementing the plan
+
+Phases in IMPLEMENTATION_PLAN.md are **sequential**; tasks within a phase in TASKS.md are dependency-ordered. TDD is mandatory per the global rules already in effect (`~/.claude/rules/ecc/common/`): write the test first with fixtures, **never** against the developer's real `~/.claude.json`/`~/.claude/` files. At the end of each phase: run tests, verify that phase's Definition of Done in IMPLEMENTATION_PLAN.md, then code review, then commit — before starting the next phase.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `TorchiaHub/MyClaude`, via the `gh` CLI. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: [CONTEXT.md](CONTEXT.md) + [docs/adr/](docs/adr/) at the repo root. See [docs/agents/domain.md](docs/agents/domain.md).

@@ -6,6 +6,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # Node / frontend
 node_modules/
@@ -18,6 +20,9 @@ dist/
 
 # OS
 .DS_Store
+
+# Playwright MCP test artifacts
+.playwright-mcp/
 
 # Control plane runtime data (local, not shared)
 .claude-control-plane/
