@@ -68,3 +68,17 @@ Two invariants that recur across the design and matter for any future change tou
 ## Execution rules for implementing the plan
 
 Phases in IMPLEMENTATION_PLAN.md are **sequential**; tasks within a phase in TASKS.md are dependency-ordered. TDD is mandatory per the global rules already in effect (`~/.claude/rules/ecc/common/`): write the test first with fixtures, **never** against the developer's real `~/.claude.json`/`~/.claude/` files. At the end of each phase: run tests, verify that phase's Definition of Done in IMPLEMENTATION_PLAN.md, then code review, then commit — before starting the next phase.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `TorchiaHub/MyClaude`, via the `gh` CLI. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: [CONTEXT.md](CONTEXT.md) + [docs/adr/](docs/adr/) at the repo root. See [docs/agents/domain.md](docs/agents/domain.md).
