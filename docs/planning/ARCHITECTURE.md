@@ -44,30 +44,31 @@ Un modulo per responsabilità, file piccoli e focalizzati (200–400 righe tipic
 | `sandbox_config` | Lettura/scrittura config sandboxing (allowlist filesystem/rete) | `~/.claude/settings.json` (chiavi sandbox) |
 | `multi_agent_monitor` *(fase successiva)* | Stato agent view/team/dynamic workflow | `~/.claude/jobs/`, mailbox JSON, `.claude/worktrees/` |
 | `sanitizer` | Rimozione segreti/percorsi/cache locale in fase di export | — |
+| `home_browser` | Operazioni file (list/preview/rename/move/delete) su **tutto** `~/.claude/`, senza esclusioni — scelta di scope deliberata. Unico invariante: `root` non è mai escapable/cancellabile (`_resolve_safe_path`, confronto su path *risolti*, robusto a symlink e forme equivalenti come `"./"`) | `~/.claude/` (intero albero) |
+| `claude_home_graph` | Costruisce il grafo nodi/archi dell'ambiente globale (CLAUDE.md, settings.json, ogni skill/agente/comando/output-style da `library_registry`, ogni regola da `rules_inspector`) con archi strutturali reali (skill annidate, hook→script) — nessun parsing free-text di CLAUDE.md | `~/.claude/` + `library_registry` + `rules_inspector` |
 | `db` | Modelli e accesso SQLite | SQLite |
 | `api` | Router FastAPI che espone i moduli sopra + serve la build frontend | — |
+| `origin_guard` *(modulo flat, non package)* | Middleware globale: rifiuta `POST`/`PUT`/`PATCH`/`DELETE` il cui header `Origin` non corrisponde a scheme/host/porta della request; richieste senza `Origin` (curl, hook) passano invariate | — |
 
 **Nota sul parsing dei transcript:** interfaccia isolata e sostituibile (vedi DESIGN.md §3) — resta parsing diretto per l'MVP, non OTel, per non introdurre un collector sempre attivo.
 
 ## Componenti frontend
 
-| Pannello | Contenuto | Editing? |
+Nav key effettiva in `frontend/src/store/navigationStore.ts` tra parentesi. 10 pannelli registrati (non 14: "Local Package Manager" non è un pannello separato — la gestione pacchetti di progetto/globale vive nello stesso Canvas del Visual Workflow Canvas; Auto Memory/Rules/Checkpoint/Sandboxing/Output Styles sono 5 sub-tab di un unico pannello "Estensioni Filesystem", non 5 pannelli distinti; Multi-Agent Monitor non è ancora costruito, Fase 7).
+
+| Pannello (nav key) | Contenuto | Editing? |
 |---|---|---|
-| Configuration Manager | Config globale (una recipe attiva alla volta) | Sì (form) |
-| Local Package Manager | Pacchetti di progetto (N attivi contemporaneamente) | Sì (form + attivazione) |
-| MCP Hub | Elenco, test, attivazione/disattivazione server MCP | Sì (form) |
-| Library & Organization | Catalogo skill/agenti/comandi/output style; albero cartelle + filtro tag + preferiti | Solo metadati/organizzazione |
-| Token & Cost Dashboard | Grafici costo/token per sessione/progetto/pacchetto/periodo | No (read-only) |
-| Live Activity Monitor | Sessioni attive (busy/idle) + drill-down skill/agente/tool | No (read-only) |
-| Multi-Agent Monitor *(fase successiva)* | Agent view/team/dynamic workflow | No (read-only) |
-| Visual Workflow Canvas | Composizione nodi → pacchetto | Sì (canvas) |
-| Workflow Comparator | Diff statico + confronto storico (combinazione / isolato) | No (read-only) |
-| Auto Memory Viewer | `MEMORY.md` + storia crescita | Sola lettura/audit |
-| Rules Inspector | Regole `.claude/rules/` e pattern | Sola lettura |
-| Checkpoint Viewer | Timeline checkpoint + diff | Sola lettura + azione rewind (delega alla CLI) |
-| Sandboxing Editor | Allowlist filesystem/rete + simulatore | Sì (form) |
-| Output Styles Manager | Catalogo/editor output style | Sì (form) |
-| Import/Export | Wizard export sanitizzato / import con risoluzione dipendenze | Sì (mapping) |
+| Configuration Manager (`config`) | Config globale + progetto (permessi allow/ask/deny) | Sì — `PUT /config/global\|project/permissions` |
+| MCP Hub (`mcp`) | Elenco, test, attivazione/disattivazione server MCP | Sì (form + test raggiungibilità) |
+| Library & Organization (`library`) | Catalogo skill/agenti/comandi/output style; albero cartelle + filtro tag + preferiti | Solo bookmark (`POST /library/bookmark`) |
+| Token & Cost Dashboard (`dashboard`) | Grafici costo/token per sessione/progetto/pacchetto/periodo | No (read-only) |
+| Canvas Pacchetti (`canvas`) | Composizione nodi → pacchetto, scope globale (singolo attivo) e progetto (N attivi); crea/attiva/disattiva/preview-diff | Sì (canvas + attivazione) |
+| Live Activity Monitor (`activity`) | Sessioni attive (WS `/activity/live`) + drill-down skill/agente/tool su richiesta | No (read-only) |
+| Multi-Agent Monitor *(Fase 7, non costruito)* | Agent view/team/dynamic workflow | No (read-only) |
+| Comparator (`comparator`) | Diff statico + confronto storico (combinazione / isolato); toggle install/uninstall hook SessionStart | Diff/metriche read-only; mutazione solo sull'hook |
+| Estensioni Filesystem (`filesystem`) | 5 sub-tab: Auto Memory, Rules Inspector, Checkpoint Viewer, Sandboxing, Output Styles | No (read-only — nessun endpoint di scrittura, a differenza del design originale) |
+| Import/Export (`import-export`) | Export sanitizzato per download / import file con report dipendenze mancanti | Sì (import è `POST`; export è `GET` download) |
+| Claude Globale (`claude-global`) | 2 sub-tab: canvas React Flow read-only del grafo `claude_home_graph` (filtrato ai nodi connessi) + folder browser sull'intero `~/.claude/` | Sì — rename/move/delete via `home_browser`, con conferma nativa obbligatoria prima di ogni delete |
 
 ## Comunicazione tra pannelli
 
@@ -133,27 +134,49 @@ CREATE TABLE written_files (
 
 Il Comparator ricostruisce "quali pacchetti erano attivi in un dato momento per un dato progetto" incrociando `activation_log` (eventi activate/deactivate nel tempo) con `session_started` (quando una sessione è iniziata, per quel `cwd`) e `telemetry_cache` (le sue metriche).
 
-## Contratto API (bozza)
+## Contratto API (stato reale — verificato su `backend/app/api/`)
 
 | Endpoint | Metodo | Scopo |
 |---|---|---|
-| `/config/global`, `/config/project` | GET/PUT | Configuration Manager |
-| `/mcp/servers` | GET/POST/DELETE | MCP Hub |
-| `/library` | GET | Library & Organization (skill/agenti/comandi/output style + cartelle/tag/bookmark) |
-| `/projects` | GET/POST | Project discovery (auto-scan + aggiunta manuale) |
-| `/packages` | GET/POST/PUT/DELETE | Canvas / package registry |
-| `/packages/{id}/activate`, `/deactivate` | POST | Activation engine (con diff preview su richiesta) |
-| `/telemetry/summary` | GET | Token & Cost Dashboard |
-| `/activity/live` | WS | Live Activity Monitor |
-| `/packages/compare` | GET `?a=&b=&mode=combination|isolated` | Workflow Comparator |
-| `/packages/{id}/export` | GET | Import/Export (con sanitizzazione) |
-| `/packages/import` | POST | Import/Export |
-| `/memory/{project}` | GET | Auto Memory Viewer |
-| `/rules/{project}` | GET | Rules Inspector |
-| `/checkpoints/{session_id}` | GET | Checkpoint Viewer |
-| `/sandbox/config` | GET/PUT | Sandboxing Editor |
-| `/output-styles` | GET/POST | Output Styles Manager |
+| `/health` | GET | Health check |
 | `/system/shutdown` | POST | Spegnimento del backend da UI |
+| `/config/global` | GET | Configuration Manager — config globale |
+| `/config/project?path=` | GET | Configuration Manager — config progetto |
+| `/config/global/permissions` | PUT | Configuration Manager — riscrive allow/ask/deny globali |
+| `/config/project/permissions?path=` | PUT | Configuration Manager — riscrive allow/ask/deny di progetto |
+| `/mcp/servers` | GET/POST | MCP Hub — elenco, aggiunta |
+| `/mcp/servers/{name}` | DELETE | MCP Hub — rimozione |
+| `/mcp/servers/{name}/test` | POST | MCP Hub — test raggiungibilità |
+| `/library` | GET | Library & Organization |
+| `/library/bookmark` | POST | Library — toggle bookmark |
+| `/projects` | GET/POST | Project discovery (auto-scan + aggiunta manuale) |
+| `/telemetry/summary` | GET | Token & Cost Dashboard |
+| `/packages` | GET/POST | Package registry — elenco, creazione |
+| `/packages/{id}` | GET/DELETE | Package registry — dettaglio, cancellazione |
+| `/packages/{id}/export` | GET | Import/Export — download sanitizzato |
+| `/packages/{id}/preview-activation` | GET | Canvas — diff preview prima di attivare |
+| `/packages/{id}/activate`, `/deactivate` | POST | Activation engine |
+| `/packages/compare?a=&b=&mode=combination\|isolated` | GET | Workflow Comparator |
+| `/packages/import` | POST | Import/Export — materializza bundle importato |
+| `/activity/live` | WS | Live Activity Monitor — sessioni realtime |
+| `/activity/sessions/{session_id}/drilldown` | GET | Live Activity Monitor — drill-down tool_use su richiesta |
+| `/hooks/session-start/status` | GET | Comparator — stato installazione hook |
+| `/hooks/session-start/install` | POST | Comparator — installa hook SessionStart |
+| `/hooks/session-start/install` | DELETE | Comparator — disinstalla hook |
+| `/hooks/session-start` | POST | Riceve la notifica dell'hook a runtime |
+| `/memory?project_path=` | GET | Auto Memory Viewer (query param, non path param) |
+| `/rules?project_path=` | GET | Rules Inspector (`project_path` opzionale) |
+| `/checkpoints/{session_id}?cwd=` | GET | Checkpoint Viewer |
+| `/sandbox/config` | GET | Sandboxing — sola lettura, nessun `PUT` implementato |
+| `/output-styles?project_path=` | GET | Output Styles — sola lettura, nessun `POST` implementato |
+| `/claude-home/graph` | GET | Claude Globale — grafo ambiente |
+| `/claude-home/tree?path=` | GET | Claude Globale — folder browser |
+| `/claude-home/file?path=` | GET | Claude Globale — anteprima file |
+| `/claude-home/rename` | PATCH | Claude Globale — rinomina entry |
+| `/claude-home/move` | PATCH | Claude Globale — sposta entry |
+| `/claude-home/entry?path=` | DELETE | Claude Globale — cancella entry (conferma nativa lato UI) |
+
+Nota: i router `filesystem_extensions` e `claude_home` non erano nel contratto API originale (bozza pre-Fase 5/6) — `filesystem_extensions` monta senza prefix (endpoint a radice `/memory`, `/rules`, ecc., non `/filesystem/*`), `claude_home` monta con prefix `/claude-home`. `Sandboxing Editor` e `Output Styles Manager` restano GET-only nonostante il design originale (§4 DESIGN.md) li descriva come editabili — coerente con la scelta di Fase 5 "tutte read-mostly" fatta durante l'implementazione.
 
 ## Layout repository proposto
 

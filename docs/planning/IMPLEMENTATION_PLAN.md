@@ -81,6 +81,15 @@ Regole globali già attive per chi esegue (vedi `~/.claude/rules/ecc/common/`), 
 
 **Definition of Done:** un pacchetto esportato e re-importato su una cartella di test pulita non contiene alcun dato locale sensibile, verificato via test automatico.
 
+## Addendum post-Fase 6 — Configuration Manager editabile & Claude Globale
+
+Due feature costruite dopo la chiusura formale della Fase 6, non previste nello scope originale di nessuna fase pianificata:
+
+- **Configuration Manager editabile** — il design originale (§4 DESIGN.md, tabella pannelli in [ARCHITECTURE.md](./ARCHITECTURE.md)) prevedeva editing "form" fin dall'inizio, ma l'implementazione di Fase 2 aveva coperto solo la lettura. Aggiunto `PUT /config/global/permissions` e `PUT /config/project/permissions`: move/add/remove regole allow/ask/deny, scrittura diretta su `~/.claude/settings.json` (globale) o `.claude/settings.json` di progetto. `settings.local.json` resta intenzionalmente read-only (mai scritto da questo pannello), coerente con il comportamento non-merge noto di Claude Code su quel file.
+- **Claude Globale** — pannello nuovo, distinto da Library & Organization: un canvas React Flow read-only sul grafo `claude_home_graph` (nodi/archi reali dell'ambiente `~/.claude/`, filtrato ai soli nodi connessi + i due nodi ancora per leggibilità su dataset da 500+ elementi) più un folder browser lazy-loaded (`home_browser`) che copre **l'intero** `~/.claude/` senza esclusioni — scelta di scope esplicita dell'utente, non un'omissione. Unico vincolo enforced: `root` non è mai escapable/cancellabile. Un CRITICAL trovato in code review (`root` riconosciuto solo per le stringhe letterali `""`/`"."`, bypassabile con `"./"` e simili, permettendo `DELETE` di cancellare l'intero `~/.claude/` via `rmtree`) è stato corretto confrontando path *risolti* invece di stringhe grezze — vedi nota in [ARCHITECTURE.md](./ARCHITECTURE.md#componenti-backend) e in `CLAUDE.md`.
+
+**Definition of Done (retroattiva, entrambe soddisfatte):** permessi modificabili da UI persistono su file reali e sono verificati da test; Claude Globale mostra grafo e albero cartelle reali, rename/move/delete funzionano con conferma nativa obbligatoria prima di ogni delete, e il path-traversal/root-escape è coperto da test dedicati.
+
 ## Fase 7 — Multi-Agent Monitor *(dopo che le fasi precedenti sono stabili)*
 
 **Obiettivo:** estendere il Live Activity Monitor a agent view / agent team / dynamic workflow.
